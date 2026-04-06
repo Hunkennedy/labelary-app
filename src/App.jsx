@@ -505,7 +505,7 @@ export default function App() {
             {/* Preview image */}
             <div
               className="flex flex-1 items-center justify-center"
-              style={{ background: "#0b1120", overflow: "auto", minHeight: 0 }}
+              style={{ background: "#0b1120", overflow: "hidden", minHeight: 0 }}
             >
               {isLoadingPreview ? (
                 <div className="flex flex-col items-center gap-3">
@@ -525,7 +525,7 @@ export default function App() {
                   src={previewUrl}
                   alt={`Preview etiqueta ${labels[selectedIndex]?.serial}`}
                   className="rounded-lg"
-                  style={{ maxHeight: "100%", maxWidth: "100%", width: "auto", height: "auto", display: "block" }}
+                  style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
                 />
               ) : (
                 <div className="flex flex-col items-center gap-3 select-none" style={{ color: "#1e2d4a" }}>
