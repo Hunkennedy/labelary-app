@@ -136,6 +136,8 @@ export default function App() {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const selectedCardRef = useRef(null);
+  const previewCacheRef = useRef(new Map());
+  const previewCacheUrlsRef = useRef(new Set());
 
   const effectiveMaxCount = sendCounter ? 32 : 1;
   const safeCount = useMemo(() => clampCount(count, effectiveMaxCount), [count, effectiveMaxCount]);
@@ -166,8 +168,37 @@ export default function App() {
     }).join("\n");
   }, [safeCount, safeStart, sendCounter, template]);
 
-  const previewLabel = useCallback(async (index, zplBody = mergedZpl) => {
+  const isUrlInCache = useCallback((url) => {
+    return Boolean(url) && previewCacheUrlsRef.current.has(url);
+  }, []);
+
+  const previewLabel = useCallback(async (index, zplBody = mergedZpl, forceRefresh = false) => {
     const safeIdx = Math.max(0, Math.min(labels.length - 1, index));
+    const cacheKey = JSON.stringify({ dpmm, width, height, index: safeIdx });
+    const cachedEntry = previewCacheRef.current.get(cacheKey);
+    const cachedUrl = cachedEntry?.url;
+    const isSameZpl = cachedEntry?.zplBody === zplBody;
+
+    if (cachedUrl && isSameZpl && !forceRefresh) {
+      setSelectedIndex(safeIdx);
+      setError("");
+      setPreviewUrl((current) => {
+        if (current && !isUrlInCache(current)) {
+          URL.revokeObjectURL(current);
+        }
+        return cachedUrl;
+      });
+      return;
+    }
+
+    if (cachedUrl && (forceRefresh || !isSameZpl)) {
+      previewCacheRef.current.delete(cacheKey);
+      previewCacheUrlsRef.current.delete(cachedUrl);
+      if (cachedUrl !== previewUrl) {
+        URL.revokeObjectURL(cachedUrl);
+      }
+    }
+
     try {
       setIsLoadingPreview(true);
       setError("");
@@ -190,8 +221,12 @@ export default function App() {
 
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
+      previewCacheRef.current.set(cacheKey, { zplBody, url: objectUrl });
+      previewCacheUrlsRef.current.add(objectUrl);
       setPreviewUrl((current) => {
-        if (current) URL.revokeObjectURL(current);
+        if (current && !isUrlInCache(current)) {
+          URL.revokeObjectURL(current);
+        }
         return objectUrl;
       });
     } catch (err) {
@@ -199,7 +234,19 @@ export default function App() {
     } finally {
       setIsLoadingPreview(false);
     }
-  }, [dpmm, width, height, mergedZpl, labels.length]);
+  }, [dpmm, width, height, mergedZpl, labels.length, isUrlInCache, previewUrl]);
+
+  useEffect(() => {
+    const previewCache = previewCacheRef.current;
+    const previewCacheUrls = previewCacheUrlsRef.current;
+    return () => {
+      for (const cachedEntry of previewCache.values()) {
+        URL.revokeObjectURL(cachedEntry.url);
+      }
+      previewCache.clear();
+      previewCacheUrls.clear();
+    };
+  }, []);
 
   // Keyboard navigation
   useEffect(() => {
@@ -481,7 +528,7 @@ export default function App() {
                   <IconChevronLeft />
                 </NavButton>
                 <button
-                  onClick={() => previewLabel(selectedIndex)}
+                  onClick={() => previewLabel(selectedIndex, mergedZpl, true)}
                   disabled={isLoadingPreview}
                   title="Actualizar preview"
                   className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
